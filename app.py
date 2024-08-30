@@ -1,140 +1,3 @@
-# import os
-# from dotenv import load_dotenv
-# from langchain_google_genai import GoogleGenerativeAIEmbeddings
-# from langchain_chroma import Chroma  # Updated import
-# from langchain_google_genai import ChatGoogleGenerativeAI
-# from langchain.chains import ConversationalRetrievalChain
-# from langchain.memory import ConversationBufferMemory
-# import json
-# from flask import Flask, request, jsonify
-# from flask_cors import CORS
-# import uuid
-
-# # Load environment variables
-# load_dotenv()
-
-# app = Flask(__name__)
-# CORS(app)
-
-# class FitnessChatbot:
-#     def __init__(self, persist_directory, processed_data_dir):
-#         self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-#         self.persist_directory = persist_directory
-#         self.processed_data_dir = processed_data_dir
-#         self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
-#         self.vectorstore = None
-#         self.qa = None
-#         self.user_sessions = {}
-        
-#         self.load_or_create_vectorstore()
-
-#     def load_or_create_vectorstore(self):
-#         if os.path.exists(self.persist_directory):
-#             print("Loading existing Chroma database...")
-#             self.vectorstore = Chroma(persist_directory=self.persist_directory, embedding_function=self.embeddings)
-#             if self.vectorstore._collection.count() == 0:
-#                 print("Chroma database is empty. Creating new vectors...")
-#                 self.process_videos()
-#         else:
-#             print("Chroma database not found. Creating new vectors...")
-#             self.process_videos()
-        
-#         self.initialize_qa_chain()
-
-#     def process_videos(self):
-#         texts = []
-#         metadatas = []
-
-#         for filename in os.listdir(self.processed_data_dir):
-#             if filename.endswith('.json'):
-#                 with open(os.path.join(self.processed_data_dir, filename), 'r', encoding='utf-8') as f:
-#                     video_data = json.load(f)
-#                     texts.append(video_data['combined_text'])
-#                     metadatas.append({
-#                         'title': video_data['title'],
-#                         'video_id': video_data['id'],
-#                         'description': video_data['description']
-#                     })
-
-#         self.vectorstore = Chroma.from_texts(
-#             texts=texts,
-#             metadatas=metadatas,
-#             embedding=self.embeddings,
-#             persist_directory=self.persist_directory
-#         )
-
-#     def initialize_qa_chain(self):
-#         self.qa = ConversationalRetrievalChain.from_llm(
-#             llm=self.llm,
-#             retriever=self.vectorstore.as_retriever()
-#         )
-
-#     def create_user_session(self, user_profile):
-#         session_id = str(uuid.uuid4())
-#         self.user_sessions[session_id] = {
-#             'profile': user_profile,
-#             'memory': ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-#         }
-#         return session_id
-
-#     def get_response_and_recommendations(self, session_id, query):
-#         user_session = self.user_sessions.get(session_id)
-#         if not user_session:
-#             return "Session not found. Please create a new session.", []
-
-#         result = self.qa({"question": query, "chat_history": user_session['memory'].chat_memory})
-#         user_session['memory'].chat_memory.add_user_message(query)
-#         user_session['memory'].chat_memory.add_ai_message(result['answer'])
-
-#         recommendations = self.get_video_recommendations(query, user_session['profile'])
-#         return result['answer'], recommendations
-
-#     def get_video_recommendations(self, query, user_profile):
-#         combined_query = f"{query} {user_profile['fitness_level']} {user_profile['goals']} {user_profile['preferred_workouts']} {user_profile['equipment']}"
-#         results = self.vectorstore.similarity_search(combined_query, k=3)
-        
-#         recommendations = []
-#         for doc in results:
-#             video_id = doc.metadata.get('video_id', 'No ID available')
-#             recommendations.append({
-#                 'title': doc.metadata.get('title', 'No title available'),
-#                 'video_id': video_id,
-#                 'description': doc.metadata.get('description', 'No description available'),
-#                 'youtube_link': f"https://www.youtube.com/watch?v={video_id}"
-#             })
-        
-#         return recommendations
-
-# chatbot = FitnessChatbot("data/chroma_db", 'data/processed')
-
-# @app.route('/')
-# def home():
-#     return "Welcome to the Fitness Chatbot API. Use /create_session to start a new session and /chat to interact with the chatbot."
-
-# @app.route('/create_session', methods=['POST'])
-# def create_session():
-#     user_profile = request.json
-#     session_id = chatbot.create_user_session(user_profile)
-#     return jsonify({"session_id": session_id})
-
-# @app.route('/chat', methods=['POST'])
-# def chat():
-#     data = request.json
-#     session_id = data.get('session_id')
-#     query = data.get('query')
-    
-#     if not session_id or not query:
-#         return jsonify({"error": "Missing session_id or query"}), 400
-
-#     response, recommendations = chatbot.get_response_and_recommendations(session_id, query)
-#     return jsonify({
-#         "response": response,
-#         "recommendations": recommendations
-#     })
-
-# if __name__ == "__main__":
-#     app.run(debug=True)
-
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -152,7 +15,7 @@ load_dotenv()
 youtube = build('youtube', 'v3', developerKey=os.getenv('YOUTUBE_API_KEY'))
 
 class FitnessChatbot:
-    def __init__(self, persist_directory, processed_data_dir):
+    def __init__(self, persist_directory, processed_data_dir, expert_name):
         self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
         self.persist_directory = persist_directory
         self.processed_data_dir = processed_data_dir
@@ -161,7 +24,7 @@ class FitnessChatbot:
         self.vectorstore = None
         self.qa = None
         self.user_profile = None
-        
+        self.expert_name = expert_name
         self.load_or_create_vectorstore()
 
     def load_or_create_vectorstore(self):
@@ -205,24 +68,51 @@ class FitnessChatbot:
         self.user_profile = profile
 
     def get_response_and_recommendations(self, query):
-        combined_query = f"{query} {self.user_profile['fitness_level']} {self.user_profile['goals']} {self.user_profile['preferred_workouts']} {self.user_profile['equipment']}"
-        result = self.qa({"question": combined_query})
-        recommendations = self.get_video_recommendations(combined_query)
+        expert_name = self.expert_name
+        user_profile = self.user_profile
+
+        system_prompt = f"""
+        You are {expert_name}, an AI fitness assistant based on Jeff Cavaliere's expertise and AthleanX YouTube content. Your role is to provide personalized fitness advice and recommend relevant AthleanX videos.
+
+        Key points:
+        1. Use knowledge from AthleanX YouTube videos to answer questions and give advice.
+        2. Tailor responses to the user's fitness level: {user_profile['fitness_level']}.
+        3. Consider the user's goals: {user_profile['goals']}.
+        4. Keep in mind their preferred workouts: {user_profile['preferred_workouts']}.
+        5. Adapt advice based on their equipment access: {user_profile['equipment']}.
+        6. Prioritize recommending specific exercises, techniques, or workouts from AthleanX videos.
+        7. Avoid referring to external websites or programs. Focus on providing advice and information available in the YouTube content.
+        8. If relevant, mention video titles or topics that would be helpful, but don't invent video names.
+
+        Respond in Jeff Cavaliere's typical style: direct, informative, and encouraging. Use "we" to create a sense of shared journey in fitness.
+
+        User query: {query}
+
+        Provide a thorough response addressing the query and incorporating relevant AthleanX principles and techniques.
+        """
+
+        # Generate the response
+        result = self.qa({"question": system_prompt})
+        
+        # Generate video recommendations
+        recommendations = self.get_video_recommendations(query)
+        
         return result['answer'], recommendations
 
+
     def get_video_recommendations(self, query):
-        results = self.vectorstore.similarity_search(query, k=3)
+        # Combine the query with user profile information for better context
+        contextualized_query = f"{query} {self.user_profile['fitness_level']} {self.user_profile['goals']} {self.user_profile['preferred_workouts']} {self.user_profile['equipment']}"
+        
+        results = self.vectorstore.similarity_search(contextualized_query, k=3)
         recommendations = []
         for doc in results:
             video_id = doc.metadata.get('video_id', '')
             title = doc.metadata.get('title', 'No title available')
             description = doc.metadata.get('description', 'No description available')
             
-            # Fetch thumbnail
             thumbnail_url = self.get_video_thumbnail(video_id)
-            
-            # Generate summary
-            summary = self.generate_video_summary(title, description)
+            summary = self.generate_concise_summary(title, description)
             
             recommendations.append({
                 'title': title,
@@ -233,6 +123,11 @@ class FitnessChatbot:
                 'thumbnail_url': thumbnail_url
             })
         return recommendations
+
+    def generate_concise_summary(self, title, description):
+        prompt = f"Provide a very concise 1-2 sentence summary of this AthleanX video, highlighting its key points or exercises. Title: {title}. Description: {description}"
+        response = self.llm.invoke(prompt)
+        return response.content
 
     def get_video_thumbnail(self, video_id):
         try:
@@ -256,13 +151,75 @@ class FitnessChatbot:
 
 # Streamlit app
 def main():
-    st.title("Fitness AI Chatbot")
+    # Set page configuration
+    st.set_page_config(
+        page_title="Fitness AI Chatbot",
+        page_icon="💪",
+        # layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+    # Custom CSS for gradient background and text styling
+    st.markdown("""
+        <style>
+        body {
+            background: linear-gradient(to right, #00aaff, #00ffaa);
+            font-family: 'Arial', sans-serif;
+        }
+        .title {
+            font-size: 3.5em;
+            font-weight: bold;
+            color: #ffffff;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px #000000;
+        }
+        .welcome-message {
+            font-size: 1.5em;
+            color: #ffffff;
+            text-align: center;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px #000000;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+    # Display title and welcome message with custom CSS classes
+    st.markdown('<h1 class="title">Fitness AI Chatbot</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="welcome-message">Welcome to your personalized fitness assistant!</p>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        ### What's this App about?
+        
+        - AI-powered fitness coach
+        - Answers to fitness questions
+        - Video recommendations from AthleanX
+        - Tailored guidance for all fitness level
+        - Expert advice from Jeff Cavaliere AI
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### Who is this App for?
+        
+        - Beginners starting their fitness journey
+        - Intermediate exercisers optimizing workouts
+        - Advanced athletes seeking specific tips
+        - Effective, science-based exercise enthusiasts
+        - Anyone looking for expert fitness advice
+        """)
+    st.markdown('<p class="welcome-message">Let\'s start your personalized fitness journey!</p>', unsafe_allow_html=True)
+    st.markdown("---")
 
     # Initialize session state
     if 'chatbot' not in st.session_state:
         persist_directory = "data/chroma_db"
         processed_data_dir = 'data/processed'
-        st.session_state.chatbot = FitnessChatbot(persist_directory, processed_data_dir)
+        st.session_state.chatbot = FitnessChatbot(persist_directory, processed_data_dir, expert_name="Jeff Cavaliere AI")
 
     if 'user_profile' not in st.session_state:
         st.session_state.user_profile = None
@@ -275,8 +232,24 @@ def main():
         st.header("Fitness Profile Setup")
         with st.form("user_profile_form"):
             fitness_level = st.selectbox("Fitness Level", ["Beginner", "Intermediate", "Advanced"])
-            goals = st.text_input("Fitness Goals (e.g., weight loss, muscle gain)")
-            preferred_workouts = st.text_input("Preferred Workouts (e.g., cardio, strength training)")
+            # goals = st.text_input("Fitness Goals (e.g., weight loss, muscle gain)")
+            goals = st.selectbox("Fitness Goals", [
+            "Weight loss",
+            "Muscle gain",
+            "Improve overall fitness",
+            "Increase strength",
+            "Enhance flexibility",
+            "Boost endurance",
+            "Athletic performance"
+        ])
+            preferred_workouts = st.selectbox("Preferred Workouts", [
+            "Cardio",
+            "Strength training",
+            "HIIT (High-Intensity Interval Training)",
+            "Bodyweight exercises",
+            "Weightlifting",
+            "Running"
+        ])
             equipment = st.selectbox("Equipment Access", ["Home", "Gym"])
             
             submit_button = st.form_submit_button("Start Chatting")

@@ -1,6 +1,6 @@
 # Fitness AI Chatbot: Your Personal AthleanX Assistant
 
-![Fitness AI Chatbot Demo](path/to/your/demo.gif)
+![Fitness AI Chatbot Demo](example\demo.gif)
 
 Welcome to the Fitness AI Chatbot, an intelligent assistant powered by Jeff Cavaliere's AthleanX expertise. This Streamlit-based application provides personalized fitness advice and recommends relevant AthleanX YouTube videos based on your fitness profile and queries.
 
